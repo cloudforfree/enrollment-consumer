@@ -1,0 +1,8 @@
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_PASSWORD: test
+      POSTGRES_DB: enrollment_test
+    ports:
+      - "55432:5432"
