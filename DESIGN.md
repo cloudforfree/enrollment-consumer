@@ -43,9 +43,37 @@
 - Malformed messages are retried until the DLQ too; no way to tell poison from transient without a redrive policy. IMEIs are masked in logs.
 
 ## 6. With more time
-- Run and CI the Postgres suite (Testcontainers); add a Postgres-specific stress test with many concurrent processes, not just threads.
 - Add a de-enrol event consumer, `expires_at`, and per-tenant limits table.
 - Use `expires_at` greater than current time to check if the record for the `tenant_id` is active, another way of get around using `status` and updating it by another process. 
 - Emit metrics (enrolled / duplicate / limit-exceeded / malformed) and alarm on DLQ depth and lock timeouts.
 - Check `context.get_remaining_time_in_millis()` and fail unprocessed records early rather than being killed mid-batch.
 - Mark limit-exceeded as a terminal outcome (write to a rejections table) instead of burning retries.
+
+
+## 7. Atternate Solution
+
+Instead of using Postgres there two alternate solution can be possible DynamoDB or Aurora Serverless v2
+
+### Option 1: Dynamodb
+
+It’s cheaper and faster, doesn't need VPC or instances, scales up automatically
+
+- #####  No fixed cost: pricing is on-demand per request, so idle costs near zero. A transactional enrollment is about 4 write units, which is a few dollars per million enrollments.
+- #####  No VPC : no VPC, connection pool, secret, endpoint or migration step. Cold starts are shorter without the VPC network attachment.
+- #####  Scale: it scales to very high request rates with no capacity planning.
+
+
+####  Counter contention: 
+Concurrent transactions on one tenant’s counter item can conflict and retry.
+
+####  Solution: 
+Keep one item per tenant and store its active IMEIs in a string set on that item. Then do one plain conditional update per reservation:
+
+{"SS": [imei1, imei2, imei3, imei4, imei5]}
+
+Useful for samll limits like 5, duplicate try results in no-op.
+
+
+### Option 2: Aurora Serverless v2
+
+Postgres-compatible, so the code stays the same, and it scales capacity up and down automatically. It can pause when idle, which suits dev and test environments.
